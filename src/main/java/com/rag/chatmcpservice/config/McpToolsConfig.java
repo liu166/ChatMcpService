@@ -1,4 +1,4 @@
-package com.rag.chatmcpservice.service.config;
+package com.rag.chatmcpservice.config;
 
 import com.rag.chatmcpservice.service.McpService;
 import org.springframework.ai.tool.ToolCallbackProvider;

@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: chat-mcp-service
+#  main:
+#    web-application-type: none # ????web????
+#    banner-mode: off # ??banner
+  ai:
+    mcp:
+       server:
+         name: chat-mcp-service # ?????
+         version: 1.0.0 # ?????
+         sse-message-endpoint: /sse
+server:
+  port: 8083

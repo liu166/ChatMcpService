@@ -1,22 +1,41 @@
 package com.rag.chatmcpservice.service;
 
-import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.rag.chatmcpservice.util.JsonUtil;
 import com.rag.chatmcpservice.util.OkHttpUtil;
-import kotlin.Result;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.image.ImageModel;
+import org.springframework.ai.image.ImagePrompt;
+import org.springframework.ai.image.ImageResponse;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.ai.zhipuai.ZhiPuAiImageOptions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MimeTypeUtils;
 
+import java.io.File;
 import java.io.IOException;
-import java.io.Serializable;
+import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class McpService {
+
+    @Autowired
+    @Lazy
+    private ChatClient zhipuChatClient;
+
+    @Autowired
+    @Qualifier("zhiPuAiImageModel")
+    private ImageModel imageModel;
 
     @Tool(description = "获取当前日期时间")
     public String getCurrentDateTime() {
@@ -63,7 +82,7 @@ public class McpService {
                     如果问题涉及实时金融、新闻、市场行情或当天动态，应优先调用本工具。
                     """)
     public String getRealtimeInformation(@ToolParam(description = "用户的问题") String query) {
-        Map<String, String> map = Map.of("query", query,  "fetch_full", "true", "timeout_ms", "30000", "sort", "relevance", "time_range", "day");
+        Map<String, String> map = Map.of("query", query, "fetch_full", "true", "timeout_ms", "30000", "sort", "relevance", "time_range", "day");
         String url = "https://uapis.cn/api/v1/search/aggregate";
         try {
             String message = OkHttpUtil.postJson(url, JsonUtil.toJson(map));
@@ -71,5 +90,75 @@ public class McpService {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Tool(description = """
+                根据用户输入的文本描述生成图片
+                功能：
+                1. 文生图（Text-to-Image）
+                2. 返回生成图片的 URL
+                输入：
+                - query: 用户的文本描述
+                输出：
+                - 图片 URL 字符串
+            """)
+    @Retryable(
+            value = {Exception.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 2000, multiplier = 2, maxDelay = 10000)
+    )
+    public String generateImage(@ToolParam(description = "用户的文本描述") String query) {
+        ZhiPuAiImageOptions build = ZhiPuAiImageOptions.builder().model("cogview-3-flash").build();
+        ImagePrompt imagePrompt = new ImagePrompt(query, build);
+        ImageResponse call = imageModel.call(imagePrompt);
+        String url = call.getResult().getOutput().getUrl();
+        return url;
+    }
+
+    @Tool(description = """
+                根据用户问题分析图片或视频附件，并提取对应内容。
+                功能：
+                1. 支持图片（jpg/png/gif）和视频（mp4/mov等）文件
+                2. 结合用户问题生成每个附件的解析内容
+                输入：
+                - query: 用户提出的问题（需求）
+                - paths: 文件路径列表信息
+                输出：
+                - String: 每个附件的名称及解析结果文本
+            """)
+    @Retryable(
+            value = {Exception.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 2000, multiplier = 2, maxDelay = 10000)
+    )
+    public String extractMediaContent(
+            @ToolParam(description = "用户提出的问题（需求）") String query,
+            @ToolParam(description = "文件路径列表信息") List<String> paths) {
+
+        StringBuilder resultBuilder = new StringBuilder();
+
+        for (String path : paths) {
+            try {
+                File file = new File(path);
+                byte[] bytes = Files.readAllBytes(file.toPath());
+
+                // 调用 zhipuChatClient，同步返回 PromptResponse
+                String response = zhipuChatClient.prompt()
+                        .user(spec -> {
+                            spec.text(query);
+                            spec.media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(bytes));
+                        })
+                        .call().content(); // 这里直接返回 PromptResponse
+                // 汇总每个文件的返回
+                resultBuilder.append("【").append(file.getName()).append("】\n");
+                resultBuilder.append(response).append("\n\n");
+
+            } catch (IOException e) {
+                // 文件读取失败时记录错误
+                resultBuilder.append("【").append(path).append("】读取失败: ").append(e.getMessage()).append("\n\n");
+            }
+        }
+
+        return resultBuilder.toString().trim();
     }
 }

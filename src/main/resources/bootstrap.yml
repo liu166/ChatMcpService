@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: chat-mcp-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        group: DEFAULT_GROUP
+        fail-fast: false
+      config:
+        server-addr: ${NACOS_SERVER:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        group: DEFAULT_GROUP
+        file-extension: yaml
+        shared-configs:
+          - data-id: common-config
+            group: DEFAULT_GROUP
+            refresh: true

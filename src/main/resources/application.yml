@@ -1,6 +1,8 @@
 spring:
   application:
     name: chat-mcp-service
+  config:
+    import: optional:nacos:${spring.application.name}
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
@@ -17,9 +19,6 @@ spring:
           max-idle: 8
           min-idle: 0
           max-wait: 300ms
-#  main:
-#    web-application-type: none # ????web????
-#    banner-mode: off # ??banner
   ai:
     zhipuai:
       api-key: 5897ce0d9fe14542a63860faca3d5045.2Ruej1AjFNhYgfRT
@@ -32,9 +31,9 @@ spring:
         options:
           model: cogview-3-flash
     mcp:
-       server:
-         name: chat-mcp-service # ?????
-         version: 1.0.0 # ?????
-         sse-message-endpoint: /sse
+      server:
+        name: chat-mcp-service
+        version: 1.0.0
+        sse-message-endpoint: /sse
 server:
   port: 8083
